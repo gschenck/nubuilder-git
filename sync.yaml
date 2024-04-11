@@ -1,0 +1,47 @@
+tables:
+  - zzzzsys_form:
+    one-many:
+    - zzzzsys_object:
+      fk: sob_all_zzzzsys_form_id
+      one-many:
+      - zzzzsys_event:
+        fk: sev_zzzzsys_object_id
+    - zzzzsys_browse:
+      fk: sbr_zzzzsys_form_id
+    - zzzzsys_access_form:
+      fk: slf_zzzzsys_form_id
+    - zzzzsys_tab:
+      fk: syt_zzzzsys_form_id
+    - zzzzsys_select:
+      fk: zzzzsys_select_id[.*]
+    - zzzzsys_select_clause:
+      fk: ssc_zzzzsys_select_id[.*]
+  - zzzzsys_php:
+    one-many:
+    - zzzzsys_access_php:
+      fk: slp_zzzzsys_php_id
+  - zzzzsys_note:
+    many-one:
+    - zzzzsys_note_category:
+      fk: not_zzzzsys_note_category_id
+  - zzzzsys_report:
+    one-many:
+    - zzzzsys_access_report:
+      fk: sre_zzzzsys_report_id
+  - zzzzsys_user
+  - zzzzsys_access
+  - zzzzsys_format
+  - zzzzsys_file
+  - zzzzsys_email_template
+  - zzzzsys_code_snippet
+folders:
+  source: 
+    root: "/sources"
+    items: 
+    - custom_php/*.*
+    - readme.txt
+    - custom_js/*.*
+  target:
+    database: /scripts/db/
+    code: /scripts/code
+
