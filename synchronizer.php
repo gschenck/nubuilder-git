@@ -27,11 +27,10 @@ class Synchronizer
     {
         $s = <<<SQL
             CREATE TABLE IF NOT EXISTS git_sync (
-                table_name VARCHAR(50) NOT NULL,
-                record_id VARCHAR(100) NOT NULL,
+                path VARCHAR(255) NOT NULL,
                 this_turn TINYINT NULL,
                 ts TIMESTAMP NOT NULL,
-                PRIMARY KEY (table_name, record_id)
+                PRIMARY KEY (path)
             )
         SQL;
         $this->context->database->exec($s);
@@ -97,7 +96,7 @@ class Synchronizer
         $fsYaml = @file_get_contents($path);
         if (($fsYaml === false) || ($dbYaml != $fsYaml)) {
             //who is older - sync time or file modification time?
-            $syncTime = $this->getSyncTime($tableName, $pk);
+            $syncTime = $this->getSyncTime($path);
             $fileTime = $this->getFileTime($path);
             $direction = Synchronizer::FROM_DB;
             if (isset($syncTime)) {
@@ -119,20 +118,20 @@ class Synchronizer
             }
             if ($direction == Synchronizer::FROM_DB) {
                 $fileTime = $this->objectToFile($folderName, $pk, $dbYaml);
-                $this->mark_synchonized($tableName, $pk, $fileTime);
+                $this->mark_synchonized($path, $fileTime);
             };
             if ($direction == Synchronizer::TO_DB) {
                 $this->objectToDatabase($tableName, $fsYaml);
-                $this->mark_synchonized($tableName, $pk, $fileTime);
+                $this->mark_synchonized($path, $fileTime);
             }
             if ($direction == Synchronizer::DELETE_DB) {
                 $this->objectDeleteFromDatabase($tableName, $objectData);
-                $this->delete_synchonization($tableName, $pk);
+                $this->delete_synchonization($path);
             };
             $this->console($tableName, $pk, $direction);
         } else {
             $fileTime = $this->getFileTime($path);
-            $this->mark_synchonized($tableName, $pk, $fileTime);
+            $this->mark_synchonized($path, $fileTime);
         }
         $this->context->files[$path] = true;
     }
@@ -146,7 +145,7 @@ class Synchronizer
         $fi = pathinfo($fileName);
         $tableName = substr($fi['dirname'], strlen($this->context->folders->target->database));
         $pk = $fi['filename'];
-        $syncTime = $this->getSyncTime($tableName, $pk);
+        $syncTime = $this->getSyncTime($fileName);
         $fileTime = $this->getFileTime($fileName);
         $direction = Synchronizer::TO_DB;
         if (isset($syncTime)) {
@@ -161,11 +160,11 @@ class Synchronizer
         $fsYaml = @file_get_contents($fileName);
         if ($direction == Synchronizer::TO_DB) {
             $this->objectToDatabase($tableName, $fsYaml);
-            $this->mark_synchonized($tableName, $pk, $fileTime);
+            $this->mark_synchonized($fileName, $fileTime);
         }
         if ($direction == Synchronizer::DELETE_FS) {
             @unlink($fileName);
-            $this->delete_synchonization($tableName, $pk);
+            $this->delete_synchonization($fileName);
         };
         $this->console($tableName, $pk, $direction);
         $this->context->files[$fileName] = true;
@@ -319,10 +318,10 @@ class Synchronizer
      * @param string $pk 
      * @return mixed -  DateTime or null if there was no any synchronizations
      */
-    private function getSyncTime($tableName, $pk)
+    private function getSyncTime($path)
     {
-        $st = $this->context->database->prepare('SELECT ts FROM git_sync WHERE table_name = ? AND record_id = ?');
-        $st->execute([$tableName, $pk]);
+        $st = $this->context->database->prepare('SELECT ts FROM git_sync WHERE path = ?');
+        $st->execute([$path]);
         $row = $st->fetchObject();
         if ($row) {
             return new \DateTime($row->ts, $this->context->tz);
@@ -350,20 +349,20 @@ class Synchronizer
      * @param string $pk
      * @param \DateTime $syncTime
      */
-    private function mark_synchonized($tableName, $pk, $syncTime)
+    private function mark_synchonized($path, $syncTime)
     {
         $moment = $syncTime->format('Y-m-d H:i:s');
 
-        $s = 'DELETE FROM git_sync WHERE table_name = ? AND record_id = ?';
+        $s = 'DELETE FROM git_sync WHERE path = ?';
         $st = $this->context->database->prepare($s);
-        $st->execute([$tableName, $pk]);
+        $st->execute([$path]);
 
-        $s = 'INSERT INTO git_sync (table_name, record_id, this_turn, ts) VALUES (?, ?, 1, ?)';
+        $s = 'INSERT INTO git_sync (path, this_turn, ts) VALUES (?, 1, ?)';
         $st = $this->context->database->prepare($s);
-        $st->execute([$tableName, $pk, $moment]);
+        $st->execute([$path, $moment]);
     }
 
-    private function delete_synchonization($tableName, $pk) {
+    private function delete_synchonization($path) {
         // Do nothing:
         // All records of the git_sync are set to 0 on the beginning of synchronization
         // and all zeros will be deleted on the last step of synchronization.
