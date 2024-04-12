@@ -43,7 +43,8 @@ class Context {
         
         //load file structure for DB objecrts
         $this->files = $this->loadAllFiles($this->folders->target->database);
-        $this->code = $this->loadSourceFiles();
+        $this->webCode = $this->loadSourceFiles($this->folders->source->root);
+        $this->gitCode = $this->loadSourceFiles($this->folders->target->code);
     }
 
     private function createTablesList($startingPoint) {
@@ -107,15 +108,28 @@ class Context {
         return $result;
       }
 
-      private function loadSourceFiles() {
+      private function loadSourceFiles($root) {
         $result = [];
-        $startingFolder = $this->folders->source->root;
         foreach ($this->folders->source->items as $wildcard) {
-            $fw = merge_paths($startingFolder, $wildcard);
-            foreach (glob($fw) as $filename) {
-                $result[] = $filename;
+            $fw = merge_paths($root, $wildcard);
+            foreach (glob($fw) as $fileName) {
+                $f = new \stdClass();
+                $f->time = $this->getFileTime($fileName);
+                $f->processed = false;
+                $result[$fileName] = $f;
             }
         }
         return $result;
+      }
+
+      public function getFileTime($fileName)
+      {
+          $ft = @filemtime($fileName);
+          if ($ft !== false) {
+              $d = date('d-m-Y H:i:s e', $ft);
+              $t = new \DateTime($d);
+              $t->setTimezone($this->tz);
+              return $t;
+          }
       }
 }

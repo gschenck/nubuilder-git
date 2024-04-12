@@ -12,9 +12,9 @@ require_once 'dbobject.php';
 
 class Synchronizer
 {
-    const TO_DB = 1;
-    const FROM_DB = 0;
-    const DELETE_DB = 2;
+    const TO_FS = 0;
+    const TO_NU = 1;
+    const DELETE_NU = 2;
     const DELETE_FS = 3;
     private $context;
     public function __construct($context)
@@ -67,12 +67,34 @@ class Synchronizer
                 }
             }
         }
-        // files, which does not exist in DB
+        // files yaml, which does not exist in DB
         foreach ($this->context->files as $fileName=>$processed) {
             if ($processed === false) {
                 $this->syncFile($fileName);
             }
         }
+        // Section of additional files (mostly code) 
+        // 1. from web to git
+        foreach ($this->context->webCode as $fileName=>$fileDetails) {
+            $nuTime = $fileDetails->time;
+            $syncTime = $this->getSyncTime($fileName);
+            if (array_key_exists($fileName, $this->context->gitCode)) {
+                $gitFileDetails = $this->context->gitCode[$fileName];
+                $gitTime = $gitFileDetails->time;
+            }
+            $direction = Synchronizer::TO_FS;
+            if (isset($syncTime)) {
+                if (isset($gitTime)) {
+
+                } else {
+
+                }
+            } else {
+
+            }
+        }
+        // 2. from git to web
+
 
         $s = "DELETE FROM git_sync WHERE this_turn = 0";
         $this->context->database->exec($s);
@@ -98,33 +120,33 @@ class Synchronizer
             //who is older - sync time or file modification time?
             $syncTime = $this->getSyncTime($path);
             $fileTime = $this->getFileTime($path);
-            $direction = Synchronizer::FROM_DB;
+            $direction = Synchronizer::TO_FS;
             if (isset($syncTime)) {
                 if (isset($fileTime)) {
                     if ($syncTime < $fileTime) {
-                        $direction = Synchronizer::TO_DB;
+                        $direction = Synchronizer::TO_NU;
                     } else {
-                        $direction = Synchronizer::FROM_DB;
+                        $direction = Synchronizer::TO_FS;
                     }
                 } else {
-                    $direction = Synchronizer::DELETE_DB;
+                    $direction = Synchronizer::DELETE_NU;
                 }
             } else {
                 if (isset($fileTime)) {
-                    $direction = Synchronizer::FROM_DB;
+                    $direction = Synchronizer::TO_FS;
                 } else {
-                    $direction = Synchronizer::FROM_DB;
+                    $direction = Synchronizer::TO_FS;
                 }
             }
-            if ($direction == Synchronizer::FROM_DB) {
+            if ($direction == Synchronizer::TO_FS) {
                 $fileTime = $this->objectToFile($folderName, $pk, $dbYaml);
                 $this->mark_synchonized($path, $fileTime);
             };
-            if ($direction == Synchronizer::TO_DB) {
+            if ($direction == Synchronizer::TO_NU) {
                 $this->objectToDatabase($tableName, $fsYaml);
                 $this->mark_synchonized($path, $fileTime);
             }
-            if ($direction == Synchronizer::DELETE_DB) {
+            if ($direction == Synchronizer::DELETE_NU) {
                 $this->objectDeleteFromDatabase($tableName, $objectData);
                 $this->delete_synchonization($path);
             };
@@ -147,18 +169,18 @@ class Synchronizer
         $pk = $fi['filename'];
         $syncTime = $this->getSyncTime($fileName);
         $fileTime = $this->getFileTime($fileName);
-        $direction = Synchronizer::TO_DB;
+        $direction = Synchronizer::TO_NU;
         if (isset($syncTime)) {
             if ($syncTime < $fileTime) {
-                $direction = Synchronizer::TO_DB;
+                $direction = Synchronizer::TO_NU;
             } else {
                 $direction = Synchronizer::DELETE_FS;
             }
         } else {
-            $direction = Synchronizer::DELETE_FS;
+            $direction = Synchronizer::TO_NU;
         }
         $fsYaml = @file_get_contents($fileName);
-        if ($direction == Synchronizer::TO_DB) {
+        if ($direction == Synchronizer::TO_NU) {
             $this->objectToDatabase($tableName, $fsYaml);
             $this->mark_synchonized($fileName, $fileTime);
         }
@@ -232,6 +254,9 @@ class Synchronizer
      */
     private function deleteRecordCallback($tableName, $record) {
         $pk = $record[$tableName.'_id'];
+        print_r("DELETE [\n");
+        print_r($record);
+        print_r("DELETED =========== ]\n");
         $s = "DELETE FROM {$tableName} WHERE `{$tableName}_id` = ?";
         $st = $this->context->database->prepare($s);
         $st->execute([$pk]);
@@ -248,6 +273,9 @@ class Synchronizer
     private function addRecordCallback($tableName, $record) {
         $pkName = $tableName.'_id';
         $pk = $record[$pkName];
+        print_r("ADD [\n");
+        print_r($record);
+        print_r("ADDED =========== ]\n");
         $s = "DELETE FROM {$tableName} WHERE `{$pkName}` = ?";
         $st = $this->context->database->prepare($s);
         $st->execute([$pk]);
@@ -303,13 +331,7 @@ class Synchronizer
      */
     private function getFileTime($fileName)
     {
-        $ft = @filemtime($fileName);
-        if ($ft !== false) {
-            $d = date('d-m-Y H:i:s e', $ft);
-            $t = new \DateTime($d);
-            $t->setTimezone($this->context->tz);
-            return $t;
-        }
+        return $this->context->getFileTime($fileName);
     }
 
     /**
@@ -330,9 +352,9 @@ class Synchronizer
 
     public static function console($tableName, $pk, $direction) {
         static $strDirection = [
-            Synchronizer::TO_DB =>     "DB <- FS",
-            Synchronizer::FROM_DB =>   "DB -> FS",
-            Synchronizer::DELETE_DB => "DB DELETE",
+            Synchronizer::TO_NU =>     "DB <- FS",
+            Synchronizer::TO_FS =>   "DB -> FS",
+            Synchronizer::DELETE_NU => "DB DELETE",
             Synchronizer::DELETE_FS => "FS DELETE",
         ];
         if (gettype($direction) == 'string') {

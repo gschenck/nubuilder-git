@@ -42,6 +42,6 @@ folders:
     - readme.txt
     - custom_js/*.*
   target:
-    database: /scripts/db/
-    code: /scripts/code
+    database: /sync/nuBuilder/db/
+    code: /sync/nuBuilder/code
 
