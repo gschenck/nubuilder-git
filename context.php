@@ -3,7 +3,6 @@ namespace nuFileSystemSync;
 require_once 'file_utils.php';
 class Context {
     public $folders;
-    public $tz;
     public $database;
     public $sync;
     public $scheme;
@@ -12,7 +11,6 @@ class Context {
     public $files;
     public function __construct($config) {
         $this->folders = $config->folders;
-        $this->tz = new \DateTimeZone(getenv('TZ'));
         $servername =   getenv('DB_HOST');
         $scheme =       getenv('DB_NAME');
         $username =     getenv('DB_USER');
@@ -131,7 +129,6 @@ class Context {
           if ($ft !== false) {
               $d = date('d-m-Y H:i:s e', $ft);
               $t = new \DateTime($d);
-              $t->setTimezone($this->tz);
               return $t;
           }
       }

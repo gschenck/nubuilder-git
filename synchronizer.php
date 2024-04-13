@@ -414,7 +414,7 @@ class Synchronizer
         $st->execute([$path]);
         $row = $st->fetchObject();
         if ($row) {
-            return new \DateTime($row->ts, $this->context->tz);
+            return new \DateTime($row->ts);
         }
     }
 
