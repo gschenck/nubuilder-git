@@ -40,6 +40,7 @@ class Synchronizer
     {
         $s = "UPDATE git_sync SET this_turn = 0";
         $this->context->database->exec($s);
+        // [DATABASE section]
         // Normal objects
         foreach ($this->context->objects as $objectDescriptor) {
             $object = new DBObject($objectDescriptor, $this->context);
@@ -73,31 +74,96 @@ class Synchronizer
                 $this->syncFile($fileName);
             }
         }
-        // Section of additional files (mostly code) 
+
+        // [ADDITIONAL FILES (mostly code) section]
         // 1. from web to git
         foreach ($this->context->webCode as $fileName=>$fileDetails) {
             $nuTime = $fileDetails->time;
+            $fileDetails->processed = true;
             $syncTime = $this->getSyncTime($fileName);
             if (array_key_exists($fileName, $this->context->gitCode)) {
                 $gitFileDetails = $this->context->gitCode[$fileName];
+                $gitFileDetails->processed = true;
                 $gitTime = $gitFileDetails->time;
             }
-            $direction = Synchronizer::TO_FS;
-            if (isset($syncTime)) {
-                if (isset($gitTime)) {
-
-                } else {
-
+            $direction = null;
+            if (isset($gitTime)) {
+                if ($nuTime < $gitTime) {
+                    $direction = Synchronizer::TO_NU;
+                }
+                if ($nuTime > $gitTime) {
+                    $direction = Synchronizer::TO_FS;
                 }
             } else {
-
+                if (isset($syncTime)) {
+                    $direction = Synchronizer::DELETE_NU;
+                } else {
+                    $direction = Synchronizer::TO_FS;
+                }
             }
+            switch ($direction) {
+                case Synchronizer::TO_NU:
+                    $fileTime = $this->copyFile($fileName, $this->context->folders->target->code, $this->context->folders->source->root);
+                    $this->mark_synchonized($fileName, $fileTime);
+                    break;
+                case Synchronizer::TO_FS:
+                    $fileTime = $this->copyFile($fileName, $this->context->folders->source->root, $this->context->folders->target->code);
+                    $this->mark_synchonized($fileName, $fileTime);
+                    break;
+                case Synchronizer::DELETE_NU:
+                    @unlink(merge_paths($this->context->folders->source->root, $fileName));
+                    $this->delete_synchonization($fileName);
+                    break;
+            }
+            $this->console($fileName, "", $direction);
         }
         // 2. from git to web
+        foreach ($this->context->gitCode as $fileName=>$fileDetails) {
+            if ($fileDetails->processed) {
+                continue;
+            }
+            $gitTime = $fileDetails->time;
+            $fileDetails->processed = true;
+            $syncTime = $this->getSyncTime($fileName);
+            $direction = null;
 
-
+            if (isset($syncTime)) {
+                if ($syncTime < $gitTime) {
+                    $direction = Synchronizer::TO_NU;
+                } else {
+                    $direction = Synchronizer::DELETE_FS;
+                }
+            } else {
+                $direction = Synchronizer::TO_NU;
+            }
+            switch ($direction) {
+                case Synchronizer::TO_NU:
+                    $fileTime = $this->copyFile($fileName, $this->context->folders->target->code, $this->context->folders->source->root);
+                    $this->mark_synchonized($fileName, $fileTime);
+                    break;
+                case Synchronizer::DELETE_FS:
+                    @unlink(merge_paths($this->context->folders->target->code, $fileName));
+                    $this->delete_synchonization($fileName);
+                    break;
+            }
+            $this->console($fileName, "", $direction);
+        }
         $s = "DELETE FROM git_sync WHERE this_turn = 0";
         $this->context->database->exec($s);
+    }
+
+    private function copyFile($filename, $from, $to) {
+        $from = merge_paths($from, $filename);
+        $to = merge_paths($to, $filename);
+        $pi = pathinfo($to);
+        ensure_exists($pi['dirname']);
+        if (copy($from, $to)) {
+            chmod($to, 0666);
+            $ft = @filemtime($from);
+            @touch($to, $ft);
+            $ts = $this->getFileTime($to);
+            return $ts;
+        }
     }
 
     /**
@@ -217,9 +283,17 @@ class Synchronizer
             printf('Unable to parse the YAML string: %s', $exception->getMessage());
             return false;
         }
+        // for deletion we should recreate object based on DB data instead of FS data, because we have to delete all new subrecords, 
+        // probably not existing in FS
+        $objecDEsctiptor = $this->context->getDescriptorByTableName($tableName);
+        $dbObjectLoader = new DBObject($objecDEsctiptor, $this->context);
+        $pk = DBObject::getPrimaryKey($tableName, $fsObject);
+        $dbObject = $dbObjectLoader->load($pk->value);
         try {
             $this->context->database->beginTransaction();
-            $this->objectWalker($fsObject, $tableName, [$this, 'deleteRecordCallback']);
+            if ($dbObject) {
+                $this->objectWalker($dbObject, $tableName, [$this, 'deleteRecordCallback']);
+            }
             $this->objectWalker($fsObject, $tableName, [$this, 'addRecordCallback']);
             $this->context->database->commit();
         }
@@ -254,9 +328,6 @@ class Synchronizer
      */
     private function deleteRecordCallback($tableName, $record) {
         $pk = $record[$tableName.'_id'];
-        print_r("DELETE [\n");
-        print_r($record);
-        print_r("DELETED =========== ]\n");
         $s = "DELETE FROM {$tableName} WHERE `{$tableName}_id` = ?";
         $st = $this->context->database->prepare($s);
         $st->execute([$pk]);
@@ -273,9 +344,6 @@ class Synchronizer
     private function addRecordCallback($tableName, $record) {
         $pkName = $tableName.'_id';
         $pk = $record[$pkName];
-        print_r("ADD [\n");
-        print_r($record);
-        print_r("ADDED =========== ]\n");
         $s = "DELETE FROM {$tableName} WHERE `{$pkName}` = ?";
         $st = $this->context->database->prepare($s);
         $st->execute([$pk]);
@@ -353,10 +421,13 @@ class Synchronizer
     public static function console($tableName, $pk, $direction) {
         static $strDirection = [
             Synchronizer::TO_NU =>     "DB <- FS",
-            Synchronizer::TO_FS =>   "DB -> FS",
+            Synchronizer::TO_FS =>     "DB -> FS",
             Synchronizer::DELETE_NU => "DB DELETE",
             Synchronizer::DELETE_FS => "FS DELETE",
         ];
+        if (is_null($direction)) {
+            return;
+        }
         if (gettype($direction) == 'string') {
             $reason = $direction;
         } else {

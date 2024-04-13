@@ -116,6 +116,9 @@ class Context {
                 $f = new \stdClass();
                 $f->time = $this->getFileTime($fileName);
                 $f->processed = false;
+                if (strpos($fileName, $root) == 0) {
+                    $fileName = substr($fileName, strlen($root) + 1);
+                }
                 $result[$fileName] = $f;
             }
         }
@@ -131,5 +134,14 @@ class Context {
               $t->setTimezone($this->tz);
               return $t;
           }
+      }
+
+      public function getDescriptorByTableName($tableName) {
+        foreach ($this->objects as $o) {
+            $name = $this->getName($o);
+            if ($name === $tableName) {
+                return $o;
+            }
+        }
       }
 }

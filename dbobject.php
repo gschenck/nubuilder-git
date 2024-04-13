@@ -22,10 +22,12 @@ class DBObject
 
     public function load($id)
     {
-        $record = $this->table->records[$id];
-        $record->processed = true;
-        $objectData = array_merge($record->data, $this->addRelations($this->objectDescriptor, $id, $record));
-        return $objectData;
+        if (array_key_exists($id, $this->table->records)) {
+            $record = $this->table->records[$id];
+            $record->processed = true;
+            $objectData = array_merge($record->data, $this->addRelations($this->objectDescriptor, $id, $record));
+            return $objectData;
+        } else return null;
     }
 
     public static function getPrimaryKey($tableName, &$recordData) {
@@ -72,10 +74,6 @@ class DBObject
                 }
             }
             $single_row = $record->data;
-            if ($record->processed) {
-                $tn = Context::getName($objectDescriptor);
-                Synchronizer::console($tn, $pk,'Already processed');
-            }
             $record->processed = true;
             $dump_rows[] = array_merge($single_row, $this->addRelations($objectDescriptor, $pk, $record));
         }
