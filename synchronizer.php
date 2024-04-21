@@ -85,6 +85,8 @@ class Synchronizer
                 $gitFileDetails = $this->context->gitCode[$fileName];
                 $gitFileDetails->processed = true;
                 $gitTime = $gitFileDetails->time;
+            } else {
+                $gitTime = null;
             }
             $direction = null;
             if (isset($gitTime)) {

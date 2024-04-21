@@ -39,9 +39,8 @@ folders:
     root: "/sources"
     items: 
     - custom_php/*.*
-    - readme.txt
     - custom_js/*.*
   target:
-    database: /sync/nuBuilder/db/
-    code: /sync/nuBuilder/code
+    database: /sync/db/
+    code: /sync/code
 
