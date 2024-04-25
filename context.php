@@ -125,6 +125,7 @@ class Context {
 
       public function getFileTime($fileName)
       {
+          clearstatcache(true, $fileName);
           $ft = @filemtime($fileName);
           if ($ft !== false) {
               $d = date('d-m-Y H:i:s e', $ft);
