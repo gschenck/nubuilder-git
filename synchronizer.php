@@ -29,7 +29,7 @@ class Synchronizer
             CREATE TABLE IF NOT EXISTS git_sync (
                 path VARCHAR(255) NOT NULL,
                 this_turn TINYINT NULL,
-                ts TIMESTAMP NOT NULL,
+                ts DATETIME NOT NULL,
                 PRIMARY KEY (path)
             )
         SQL;
