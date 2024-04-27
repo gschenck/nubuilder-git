@@ -9,6 +9,7 @@ class Context {
     public $objects;
     public $tables;
     public $files;
+    public $control;
     public function __construct($config) {
         $this->folders = $config->folders;
         $servername =   getenv('DB_HOST');
@@ -16,9 +17,11 @@ class Context {
         $username =     getenv('DB_USER');
         $password =     getenv('DB_PASS');
         $this->database = new \PDO("mysql:host=$servername;dbname=$scheme", $username, $password);
+        $this->sync = new \PDO("mysql:host=$servername;dbname=$scheme", $username, $password);
         $this->scheme = $scheme;
         $this->objects = $config->tables;
         $this->tables = $this->createTablesList($this->objects);   
+        $this->control = new \StdClass();
         $this->init();
     }
 
@@ -29,6 +32,15 @@ class Context {
             return $objectDescriptor;
         }
     }
+
+    public function loadControls($dir) {
+        $this->control->stop = file_exists(merge_paths($dir, 'stop'));
+        $once = merge_paths($dir, 'once');
+        $this->control->once = file_exists($once);
+        @unlink($once);
+        $this->control->test = file_exists(merge_paths($dir, 'test'));
+    }
+
     private function init() {
         // Create folders if needed
         ensure_exists($this->folders->target->database);

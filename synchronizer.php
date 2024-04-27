@@ -38,19 +38,24 @@ class Synchronizer
 
     public function sync()
     {
+        if ($this->context->control->test) {
+            $this->context->sync->beginTransaction();
+        }
         $s = "UPDATE git_sync SET this_turn = 0";
-        $this->context->database->exec($s);
+        $this->context->sync->exec($s);
         // [DATABASE section]
         // Normal objects
         foreach ($this->context->objects as $objectDescriptor) {
             $object = new DBObject($objectDescriptor, $this->context);
             $folderName = $object->folderName;
             $tableName = $object->tableName;
-            ensure_exists($folderName);
+            if (!$this->context->control->test) {
+                ensure_exists($folderName);
+            }
             $table = $object->table;
             foreach ($table->records as $pk => $record) {
                 $objectData = $object->load($pk);
-                $this->syncObject($folderName, $pk, $tableName, $objectData);
+                $this->syncNuObject($folderName, $pk, $tableName, $objectData);
             }
         }
         // orphan records - these tables usually processed from "one-many" & "many-one" sections of objects,
@@ -61,17 +66,19 @@ class Synchronizer
             foreach ($table->records as $pk => $record) {
                 if (!$record->processed) {
                     if ($first_time) {
-                        ensure_exists($folderName);
+                        if (!$this->context->control->test) {
+                            ensure_exists($folderName);
+                        }
                         $first_time = false;
                     }
-                    $this->syncObject($folderName, $pk, $name, $record->data);
+                    $this->syncNuObject($folderName, $pk, $name, $record->data);
                 }
             }
         }
         // files yaml, which does not exist in DB
         foreach ($this->context->files as $fileName=>$processed) {
             if ($processed === false) {
-                $this->syncFile($fileName);
+                $this->syncNuObjectFile($fileName);
             }
         }
 
@@ -113,11 +120,13 @@ class Synchronizer
                     $this->mark_synchonized($fileName, $fileTime);
                     break;
                 case Synchronizer::DELETE_NU:
-                    @unlink(merge_paths($this->context->folders->source->root, $fileName));
+                    if (!$this->context->control->test) {
+                        @unlink(merge_paths($this->context->folders->source->root, $fileName));
+                    }
                     $this->delete_synchonization($fileName);
                     break;
             }
-            $this->console($fileName, "", $direction);
+            $this->console($fileName, "", $direction, $nuTime, $gitTime);
         }
         // 2. from git to web
         foreach ($this->context->gitCode as $fileName=>$fileDetails) {
@@ -148,22 +157,30 @@ class Synchronizer
                     $this->delete_synchonization($fileName);
                     break;
             }
-            $this->console($fileName, "", $direction);
+            $this->console($fileName, "", $direction, null, $gitTime);
         }
         $s = "DELETE FROM git_sync WHERE this_turn = 0";
-        $this->context->database->exec($s);
+        $this->context->sync->exec($s);
+        if ($this->context->control->test) {
+            $this->context->sync->rollBack();
+        }
     }
 
     private function copyFile($filename, $from, $to) {
         $from = merge_paths($from, $filename);
         $to = merge_paths($to, $filename);
         $pi = pathinfo($to);
-        ensure_exists($pi['dirname']);
-        if (copy($from, $to)) {
-            chmod($to, 0666);
-            $ft = @filemtime($from);
-            @touch($to, $ft);
-            $ts = $this->getFileTime($to);
+        if (!$this->context->control->test) {
+            ensure_exists($pi['dirname']);
+            if (copy($from, $to)) {
+                chmod($to, 0666);
+                $ft = @filemtime($from);
+                @touch($to, $ft);
+                $ts = $this->getFileTime($to);
+                return $ts;
+            }
+        } else {
+            $ts = new \DateTime();
             return $ts;
         }
     }
@@ -180,11 +197,12 @@ class Synchronizer
      * @param array $objectData 
      * 
      */
-    private function syncObject($folderName, $pk, $tableName, $objectData) {
+    private function syncNuObject($folderName, $pk, $tableName, $objectData) {
         $dbYaml = Yaml::dump($objectData, 10, 4, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
         $path = merge_paths($folderName, $pk) . ".yaml";
         $fsYaml = @file_get_contents($path);
-        if (($fsYaml === false) || ($dbYaml != $fsYaml)) {
+        if (Synchronizer::yamlsDifferent($dbYaml, $fsYaml)) {
+        //if (($fsYaml === false) || ($dbYaml != $fsYaml)) {
             //who is older - sync time or file modification time?
             $syncTime = $this->getSyncTime($path);
             $fileTime = $this->getFileTime($path);
@@ -218,7 +236,7 @@ class Synchronizer
                 $this->objectDeleteFromDatabase($tableName, $objectData);
                 $this->delete_synchonization($path);
             };
-            $this->console($tableName, $pk, $direction);
+            $this->console($tableName, $pk, $direction, $syncTime, $fileTime);
         } else {
             $fileTime = $this->getFileTime($path);
             $this->mark_synchonized($path, $fileTime);
@@ -231,7 +249,7 @@ class Synchronizer
      * Creates records in database or deletes file depending of modification and last sync time
      * @param string $fileName
      */
-    private function syncFile($fileName) {
+    private function syncNuObjectFile($fileName) {
         $fi = pathinfo($fileName);
         $tableName = substr($fi['dirname'], strlen($this->context->folders->target->database));
         $pk = $fi['filename'];
@@ -253,10 +271,12 @@ class Synchronizer
             $this->mark_synchonized($fileName, $fileTime);
         }
         if ($direction == Synchronizer::DELETE_FS) {
-            @unlink($fileName);
+            if (!$this->context->control->test) {
+                @unlink($fileName);
+            }
             $this->delete_synchonization($fileName);
         };
-        $this->console($tableName, $pk, $direction);
+        $this->console($tableName, $pk, $direction, $syncTime, $fileTime);
         $this->context->files[$fileName] = true;
     }
 
@@ -271,18 +291,22 @@ class Synchronizer
      */
     private function objectToFile($folderName, $fileName, $yaml)
     {
-        $path = merge_paths($folderName, $fileName) . ".yaml";
-        file_put_contents($path, $yaml);
-        chmod($path, 0666);
-        $ts = $this->getFileTime($path);
-        return $ts;
+        if (!$this->context->control->test) {
+            $path = merge_paths($folderName, $fileName) . ".yaml";
+            file_put_contents($path, $yaml);
+            chmod($path, 0666);
+            $ts = $this->getFileTime($path);
+            return $ts;
+        } else {
+            return new \DateTime();
+        }
     }
 
     private function objectToDatabase($tableName, $fsYaml) {
         try {
             $fsObject =  Yaml::parse($fsYaml);
         } catch (\Exception $exception) {
-            printf('Unable to parse the YAML string: %s', $exception->getMessage());
+            $this->_console(sprintf('Unable to parse the YAML string: %s', $exception->getMessage()));
             return false;
         }
         // for deletion we should recreate object based on DB data instead of FS data, because we have to delete all new subrecords, 
@@ -300,7 +324,7 @@ class Synchronizer
             $this->context->database->commit();
         }
         catch (\Exception $exception) {
-            print_r($exception->getMessage());
+            $this->_console($exception->getMessage());
             $this->context->database->rollBack();
         }
     }
@@ -317,7 +341,7 @@ class Synchronizer
             $this->context->database->commit();
         }
         catch (\Exception $exception) {
-            print_r($exception->getMessage());
+            $this->_console($exception->getMessage());
             $this->context->database->rollBack();
         }
     }
@@ -329,11 +353,12 @@ class Synchronizer
      * @param array $record - single record as array of [column=>value]
      */
     private function deleteRecordCallback($tableName, $record) {
-        $pk = $record[$tableName.'_id'];
-        $s = "DELETE FROM {$tableName} WHERE `{$tableName}_id` = ?";
-        $st = $this->context->database->prepare($s);
-        $st->execute([$pk]);
-
+        if (!$this->context->control->test) {
+            $pk = $record[$tableName.'_id'];
+            $s = "DELETE FROM {$tableName} WHERE `{$tableName}_id` = ?";
+            $st = $this->context->database->prepare($s);
+            $st->execute([$pk]);
+        }
     }
 
    /**
@@ -344,26 +369,28 @@ class Synchronizer
      * @param array $record - single record as array of [column=>value]
      */
     private function addRecordCallback($tableName, $record) {
-        $pkName = $tableName.'_id';
-        $pk = $record[$pkName];
-        $s = "DELETE FROM {$tableName} WHERE `{$pkName}` = ?";
-        $st = $this->context->database->prepare($s);
-        $st->execute([$pk]);
+        if (!$this->context->control->test) {
+            $pkName = $tableName.'_id';
+            $pk = $record[$pkName];
+            $s = "DELETE FROM {$tableName} WHERE `{$pkName}` = ?";
+            $st = $this->context->database->prepare($s);
+            $st->execute([$pk]);
 
-        $s = "INSERT INTO {$tableName} (";
-        $values = [];
-        $first = true;
-        foreach ($record as $column=>$value) {
-            if (! $first) {
-                $s.= ',';
+            $s = "INSERT INTO {$tableName} (";
+            $values = [];
+            $first = true;
+            foreach ($record as $column=>$value) {
+                if (! $first) {
+                    $s.= ',';
+                }
+                $first = false;
+                $s.="`$column`";
+                $values[] = $value; 
             }
-            $first = false;
-            $s.="`$column`";
-            $values[] = $value; 
+            $s.=") VALUES (".join(',',array_map(fn($x)=>'?',$values)).")";      
+            $st = $this->context->database->prepare($s);
+            $st->execute($values);  
         }
-        $s.=") VALUES (".join(',',array_map(fn($x)=>'?',$values)).")";      
-        $st = $this->context->database->prepare($s);
-        $st->execute($values);  
     }
 
     /**
@@ -412,7 +439,7 @@ class Synchronizer
      */
     private function getSyncTime($path)
     {
-        $st = $this->context->database->prepare('SELECT ts FROM git_sync WHERE path = ?');
+        $st = $this->context->sync->prepare('SELECT ts FROM git_sync WHERE path = ?');
         $st->execute([$path]);
         $row = $st->fetchObject();
         if ($row) {
@@ -420,7 +447,7 @@ class Synchronizer
         }
     }
 
-    public static function console($tableName, $pk, $direction) {
+    public static function console($tableName, $pk, $direction, $nuTime, $fileTime) {
         static $strDirection = [
             Synchronizer::TO_NU =>     "DB <- FS",
             Synchronizer::TO_FS =>     "DB -> FS",
@@ -435,7 +462,38 @@ class Synchronizer
         } else {
             $reason = $strDirection[$direction];
         }
-        print(str_pad($tableName,50).str_pad($pk, 26).$reason."\n");
+        Synchronizer::_console(str_pad($tableName,35).str_pad($pk, 18).Synchronizer::time2str($nuTime).Synchronizer::time2str($fileTime).$reason);
+    }
+
+    private static function time2str($t) {
+        if (is_null($t)) {
+            return str_pad("-", 20);
+        }
+        return str_pad($t->format('d.m.y H:i:s'), 20);
+    }
+
+    private static function yamlsDifferent($y1, $y2) {
+        if (is_null($y1)) {
+            if (is_null($y2)) {
+                return false;
+            } else {
+                return true;
+            }
+        } else {
+            if (is_null($y2)) {
+                return true;
+            } else {
+                $lines1 = preg_split('/\\r\\n?|\\n/', $y1);
+                $lines2 = preg_split('/\\r\\n?|\\n/', $y2);
+                return $lines1 !== $lines2;
+            }
+        }
+    }
+
+    public static function _console($message) {
+        global $log_file;
+        @file_put_contents($log_file, $message . PHP_EOL, FILE_APPEND);
+        print($message . PHP_EOL);
     }
 
     /** 
@@ -449,11 +507,11 @@ class Synchronizer
         $moment = $syncTime->format('Y-m-d H:i:s');
 
         $s = 'DELETE FROM git_sync WHERE path = ?';
-        $st = $this->context->database->prepare($s);
+        $st = $this->context->sync->prepare($s);
         $st->execute([$path]);
 
         $s = 'INSERT INTO git_sync (path, this_turn, ts) VALUES (?, 1, ?)';
-        $st = $this->context->database->prepare($s);
+        $st = $this->context->sync->prepare($s);
         $st->execute([$path, $moment]);
     }
 
