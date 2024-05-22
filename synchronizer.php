@@ -306,7 +306,7 @@ class Synchronizer
         try {
             $fsObject =  Yaml::parse($fsYaml);
         } catch (\Exception $exception) {
-            $this->_console(sprintf('Unable to parse the YAML string: %s', $exception->getMessage()));
+            $GLOBALS['log']->error(sprintf('Unable to parse the YAML string: %s', $exception->getMessage()));
             return false;
         }
         // for deletion we should recreate object based on DB data instead of FS data, because we have to delete all new subrecords, 
@@ -324,7 +324,7 @@ class Synchronizer
             $this->context->database->commit();
         }
         catch (\Exception $exception) {
-            $this->_console($exception->getMessage());
+            $GLOBALS['log']->error($exception->getMessage());
             $this->context->database->rollBack();
         }
     }
@@ -341,7 +341,7 @@ class Synchronizer
             $this->context->database->commit();
         }
         catch (\Exception $exception) {
-            $this->_console($exception->getMessage());
+            $GLOBALS['log']->error($exception->getMessage());
             $this->context->database->rollBack();
         }
     }
@@ -462,7 +462,7 @@ class Synchronizer
         } else {
             $reason = $strDirection[$direction];
         }
-        Synchronizer::_console(str_pad($tableName,35).str_pad($pk, 18).Synchronizer::time2str($nuTime).Synchronizer::time2str($fileTime).$reason);
+        $GLOBALS['log']->print(str_pad($tableName,35).str_pad($pk, 18).Synchronizer::time2str($nuTime).Synchronizer::time2str($fileTime).$reason);
     }
 
     private static function time2str($t) {
@@ -490,12 +490,6 @@ class Synchronizer
         }
     }
 
-    public static function _console($message) {
-        global $log_file;
-        @file_put_contents($log_file, $message . PHP_EOL, FILE_APPEND);
-        print($message . PHP_EOL);
-    }
-
     /** 
      * Marks database item as synchronized for table and primary key
      * @param string $tableName
@@ -516,6 +510,7 @@ class Synchronizer
     }
 
     private function delete_synchonization($path) {
+        $GLOBALS['log']->debug("-");
         // Do nothing:
         // All records of the git_sync are set to 0 on the beginning of synchronization
         // and all zeros will be deleted on the last step of synchronization.

@@ -22,18 +22,22 @@ class DBObject
 
     public function load($id)
     {
+        $GLOBALS['log']->debug("load {$id}");
         if (array_key_exists($id, $this->table->records)) {
             $record = $this->table->records[$id];
             $record->processed = true;
             $objectData = array_merge($record->data, $this->addRelations($this->objectDescriptor, $id, $record));
             return $objectData;
-        } else return null;
+        } 
+        $GLOBALS['log']->info("{$id} not found");
+        return null;
     }
 
     public static function getPrimaryKey($tableName, &$recordData) {
         $pk = new \stdClass();
         $pk->name = $tableName.'_id';
         $pk->value = $recordData[$pk->name];
+        $GLOBALS['log']->debug($pk);
         return $pk;
     }
 

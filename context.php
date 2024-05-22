@@ -1,6 +1,7 @@
 <?php
 namespace nuFileSystemSync;
 require_once 'file_utils.php';
+require_once 'logger.php';
 class Context {
     public $folders;
     public $database;
@@ -34,11 +35,18 @@ class Context {
     }
 
     public function loadControls($dir) {
+        global $log;
         $this->control->stop = file_exists(merge_paths($dir, 'stop'));
         $once = merge_paths($dir, 'once');
         $this->control->once = file_exists($once);
         @unlink($once);
         $this->control->test = file_exists(merge_paths($dir, 'test'));
+        if (file_exists(merge_paths($dir, 'info'))) {
+            $log->setLevel(Logger::INFO);
+        }
+        if (file_exists(merge_paths($dir, 'debug'))) {
+            $log->setLevel(Logger::DEBUG);
+        }
     }
 
     private function init() {
@@ -52,7 +60,7 @@ class Context {
         }
         
         //load file structure for DB objecrts
-        $this->files = $this->loadAllFiles($this->folders->target->database);
+        $this->files = $this->loadYamlFiles($this->folders->target->database);
         $this->webCode = $this->loadSourceFiles($this->folders->source->root);
         $this->gitCode = $this->loadSourceFiles($this->folders->target->code);
     }
@@ -99,7 +107,7 @@ class Context {
         return $result;
     }
 
-    private function loadAllFiles($dir) {
+    private function loadYamlFiles($dir) {
         $result = [];
         $dirList = array_diff(scandir($dir), array('.', '..'));
         foreach ($dirList as &$item) {
@@ -112,7 +120,7 @@ class Context {
 
         foreach ($dirList as $item) {
             if (is_dir($item)) {
-                $result = array_merge($result, $this->loadAllFiles($item));
+                $result = array_merge($result, $this->loadYamlFiles($item));
             }
         }
         return $result;
@@ -150,8 +158,10 @@ class Context {
         foreach ($this->objects as $o) {
             $name = $this->getName($o);
             if ($name === $tableName) {
+                $GLOBALS['log']->debug("Found for $tableName");
                 return $o;
             }
         }
+        $GLOBALS['log']->debug("Not found for $tableName");
       }
 }
