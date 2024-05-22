@@ -314,6 +314,7 @@ class Synchronizer
         $objecDEsctiptor = $this->context->getDescriptorByTableName($tableName);
         $dbObjectLoader = new DBObject($objecDEsctiptor, $this->context);
         $pk = DBObject::getPrimaryKey($tableName, $fsObject);
+        $GLOBALS['log']->debug($pk);
         $dbObject = $dbObjectLoader->load($pk->value);
         try {
             $this->context->database->beginTransaction();
