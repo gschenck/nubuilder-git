@@ -154,14 +154,27 @@ class Context {
           }
       }
 
-      public function getDescriptorByTableName($tableName) {
-        foreach ($this->objects as $o) {
-            $name = $this->getName($o);
+      public function getDescriptorByTableName($tableName, $startingPoint = null) {
+        if (is_null($startingPoint)) {
+            $startingPoint = $this->objects;
+        }
+        foreach ($startingPoint as $objectDescriptor) {
+            $name = $this->getName($objectDescriptor);
             if ($name === $tableName) {
-                $GLOBALS['log']->debug("Found for $tableName");
-                return $o;
+                return $objectDescriptor;
+            }
+            if (property_exists($objectDescriptor, 'one-many')) {
+                $od = $this->getDescriptorByTableName($tableName, $objectDescriptor->{'one-many'});
+                if (! is_null($od)) {
+                    return $od;
+                }
+            }
+            if (property_exists($objectDescriptor, 'many-one')) {
+                $od = $this->getDescriptorByTableName($tableName, $objectDescriptor->{'many-one'});
+                if (! is_null($od)) {
+                    return $od;
+                }
             }
         }
-        $GLOBALS['log']->debug("Not found for $tableName");
       }
 }

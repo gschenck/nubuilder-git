@@ -13,6 +13,9 @@ class DBObject
     public $folderName;
     public function __construct($objectDescriptor, &$context)
     {
+        if (is_null($objectDescriptor)) {
+            $GLOBALS['log']->error("objectDescriptor is null!");
+        }
         $this->context = $context;
         $this->objectDescriptor = $objectDescriptor;
         $this->tableName = Context::getName($objectDescriptor);
@@ -37,7 +40,7 @@ class DBObject
         $pk = new \stdClass();
         $pk->name = $tableName.'_id';
         $pk->value = $recordData[$pk->name];
-        $GLOBALS['log']->debug($pk);
+        $GLOBALS['log']->debug($pk->name . '=>'. $pk->value);
         return $pk;
     }
 

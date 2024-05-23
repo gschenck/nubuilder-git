@@ -10,13 +10,7 @@ class Logger {
     private $format = 'd.m.Y H:i:s';
 
     public function addTarget($target, $reset = false) {
-        $this->targets[] = $target;
-        if ($reset) {
-            $result = @file_put_contents($target, "");
-            if ($result === false) {
-                print_r("Error initialize {$target}");
-            }
-        }
+        $this->targets[] = new Target($target, $reset);
     }
 
     public function getLevel($level) {
@@ -61,12 +55,30 @@ class Logger {
     }
 
     private function log($message) {
-        foreach ($this->targets as $target) {
-            $result = file_put_contents($target, $message . PHP_EOL, FILE_APPEND);
+        foreach ($this->targets as &$target) {
+            if ($target->reset) {
+                $result = @file_put_contents($target->file, "");
+                if ($result === false) {
+                    print_r("Error initialize {$target->file}");
+                }
+                $target->reset = false;
+            }
+            $result = file_put_contents($target->file, $message . PHP_EOL, FILE_APPEND);
             if ($result === false) {
-                print_r("Error log to {$target}");
+                print_r("Error log to {$target->file}");
             }
         }
     }
 
+}
+
+class Target {
+    public $file;
+    public $reset;
+
+    public function __construct($file, $reset)
+    {
+        $this->file = $file;
+        $this->reset = $reset;
+    }
 }

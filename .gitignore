@@ -4,5 +4,8 @@ db
 test
 once
 stop
+debug
+info
+warning
 log.txt
 token.gitlab
