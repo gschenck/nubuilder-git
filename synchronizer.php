@@ -20,11 +20,16 @@ class Synchronizer
     public function __construct($context)
     {
         $this->context = $context;
-        $this->init();
     }
 
-    private function init()
+    public function init($reset)
     {
+        if ($reset) {
+            $s = <<<SQL
+            DROP TABLE git_sync
+            SQL;
+            $this->context->database->exec($s);
+        }
         $s = <<<SQL
             CREATE TABLE IF NOT EXISTS git_sync (
                 path VARCHAR(255) NOT NULL,

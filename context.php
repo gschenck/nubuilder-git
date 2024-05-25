@@ -11,7 +11,12 @@ class Context {
     public $tables;
     public $files;
     public $control;
+    public $version;
     public function __construct($config) {
+        $this->version = $config->version;
+        if (is_null($this->version)) {
+            $this->version = "1.0";
+        }
         $this->folders = $config->folders;
         $servername =   getenv('DB_HOST');
         $scheme =       getenv('DB_NAME');
@@ -24,6 +29,14 @@ class Context {
         $this->tables = $this->createTablesList($this->objects);   
         $this->control = new \StdClass();
         $this->init();
+    }
+
+    public function checkVersion() {
+        $filesVersion = @file_get_contents(merge_paths($this->folders->target->root, 'version'));
+        if ($filesVersion === false) {
+            $filesVersion = "1.0";
+        }
+        return version_compare($this->version, $filesVersion, "==");
     }
 
     public static function getName(&$objectDescriptor) {
@@ -40,6 +53,9 @@ class Context {
         $once = merge_paths($dir, 'once');
         $this->control->once = file_exists($once);
         @unlink($once);
+        $init = merge_paths($dir, 'init');
+        $this->control->init = file_exists($init);
+        @unlink($init);
         $this->control->test = file_exists(merge_paths($dir, 'test'));
         if (file_exists(merge_paths($dir, 'info'))) {
             $log->setLevel(Logger::INFO);

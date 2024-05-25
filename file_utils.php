@@ -22,6 +22,25 @@ function folder_exist($folder)
     return ($path !== false AND is_dir($path)) ? $path : false;
 }
 
+/**
+ *  clean up folder recursively
+ */
+function empty_dir($src, $remove = false) {
+    $dir = opendir($src);
+    while(false !== ( $file = readdir($dir)) ) {
+        if (( $file != '.' ) && ( $file != '..' )) {
+            $full = $src . '/' . $file;
+            if ( is_dir($full) ) {
+                empty_dir($full, true);
+            }
+            else {
+                unlink($full);
+            }
+        }
+    }
+    closedir($dir);
+    if ($remove) rmdir($src);
+}
 
 /**
  * Merge several parts of URL or filesystem path in one path

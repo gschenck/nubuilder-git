@@ -1,3 +1,4 @@
+version: "1.1"
 tables:
   - zzzzsys_form:
     one-many:
@@ -16,10 +17,11 @@ tables:
       fk: zzzzsys_select_id[.*]
     - zzzzsys_select_clause:
       fk: ssc_zzzzsys_select_id[.*]
-  - zzzzsys_php:
-    one-many:
-    - zzzzsys_access_php:
-      fk: slp_zzzzsys_php_id
+    - zzzzsys_php:
+      fk: zzzzsys_php_id[.*]
+      one-many:
+      - zzzzsys_access_php:
+        fk: slp_zzzzsys_php_id
   - zzzzsys_note:
     many-one:
     - zzzzsys_note_category:
@@ -41,6 +43,7 @@ folders:
     - custom_php/*.*
     - custom_js/*.*
   target:
-    database: /sync/db/
-    code: /sync/code
+    root: "/sync"
+    database: "/sync/db/"
+    code: "/sync/code"
 
